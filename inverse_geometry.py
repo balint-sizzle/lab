@@ -25,8 +25,8 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     
     '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
     setcubeplacement(robot, cube, cubetarget)
-    pin.framesForwardKinematics(robot.model,robot.data,q)
-    pin.computeJointJacobians(robot.model,robot.data,q)
+    pin.framesForwardKinematics(robot.model,robot.data,qcurrent)
+    pin.computeJointJacobians(robot.model,robot.data,qcurrent)
     
     oMcubeL = getcubeplacement(cube, LEFT_HOOK)
     oMcubeR = getcubeplacement(cube, RIGHT_HOOK)
@@ -36,7 +36,6 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     def cost(q):
         #now let's print the placement attached to the right hand
         pin.framesForwardKinematics(robot.model,robot.data,q)
-        pin.computeJointJacobians(robot.model,robot.data,q)
 
         Rid = robot.model.getFrameId(RIGHT_HAND)
         oMframeR = robot.data.oMf[Rid]
@@ -55,7 +54,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         time.sleep(0.02)
 
     qdes = fmin_bfgs(cost, qcurrent,) #callback=callback
-    success = qdes < 0.1
+    success = cost(qdes) < 0.1
 
     return qdes, success
             
