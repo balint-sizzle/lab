@@ -18,6 +18,7 @@ from tools import setcubeplacement
 #CUSTOM IMPORTS
 import time
 from scipy.optimize import fmin_bfgs
+from tools import jointlimitsviolated
 
 def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     
@@ -26,7 +27,6 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     setcubeplacement(robot, cube, cubetarget)
     pin.framesForwardKinematics(robot.model,robot.data,q)
     pin.computeJointJacobians(robot.model,robot.data,q)
-
     
     oMcubeL = getcubeplacement(cube, LEFT_HOOK)
     oMcubeR = getcubeplacement(cube, RIGHT_HOOK)
@@ -42,11 +42,22 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         oMframeR = robot.data.oMf[Rid]
         Lid = robot.model.getFrameId(LEFT_HAND)
         oMframeL = robot.data.oMf[Lid]
+        
+        collision_cost = 1 if collision(robot, q) else 0
+        jointlimit_cost = 1 if jointlimitsviolated(robot, q) else 0
+        left_grasp = norm(pin.log(oMframeL.inverse() * oMcubeL).vector)
+        right_grasp = norm(pin.log(oMframeR.inverse() * oMcubeR).vector)
 
-        return norm(pin.log(oMframeL.inverse() * oMcubeL).vector) + norm(pin.log(oMframeR.inverse() * oMcubeR).vector)
+        return (left_grasp+right_grasp)**2+collision_cost+jointlimit_cost
+    
+    def callback(q):
+        updatevisuals(viz, robot, cube, q)
+        time.sleep(0.02)
 
-    qdes = fmin_bfgs(cost, qcurrent)
-    return qdes, True
+    qdes = fmin_bfgs(cost, qcurrent,) #callback=callback
+    success = qdes < 0.1
+
+    return qdes, success
             
 if __name__ == "__main__":
     from tools import setupwithmeshcat
@@ -56,10 +67,8 @@ if __name__ == "__main__":
     q = robot.q0.copy()
     
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
-    time.sleep(1)
     qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
     
     updatevisuals(viz, robot, cube, q0)
-    
     
     
