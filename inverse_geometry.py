@@ -31,8 +31,6 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     oMcubeL = getcubeplacement(cube, LEFT_HOOK)
     oMcubeR = getcubeplacement(cube, RIGHT_HOOK)
 
-    #align LEFT_HAND with LEFT_HOOK
-    #3d first
     def cost(q):
         #now let's print the placement attached to the right hand
         pin.framesForwardKinematics(robot.model,robot.data,q)
@@ -53,7 +51,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         updatevisuals(viz, robot, cube, q)
         time.sleep(0.02)
 
-    qdes = fmin_bfgs(cost, qcurrent,) #callback=callback
+    qdes = fmin_bfgs(cost, qcurrent, epsilon=EPSILON) #callback=callback
     success = cost(qdes) < 0.1
 
     return qdes, success
