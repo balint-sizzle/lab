@@ -53,7 +53,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         updatevisuals(viz, robot, cube, q)
         time.sleep(0.02)
 
-    qdes = fmin_bfgs(cost, qcurrent, epsilon=EPSILON, callback=callback)
+    qdes = fmin_bfgs(cost, qcurrent, epsilon=EPSILON, disp=False) #callback=callback, 
     success = cost(qdes) < 0.01
 
     return qdes, success
