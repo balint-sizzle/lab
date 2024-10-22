@@ -17,38 +17,46 @@ from tools import collision
 
 #returns a collision free path from qinit to qgoal under grasping constraints
 #the path is expressed as a list of configurations
-def random_cube_q(cubeq0, cubeqgoal, checkcollision=True):
+def robot_constraints():
+    Rid = robot.model.getFrameId(RIGHT_HAND)
+    oMframeR = robot.data.oMf[Rid]
+    Lid = robot.model.getFrameId(LEFT_HAND)
+    oMframeL = robot.data.oMf[Lid]
+    oMframeChest = robot.data.oMf[1]
+    rd = np.linalg.norm(oMframeL.translation - oMframeChest.translation)
+    ld = np.linalg.norm(oMframeR.translation - oMframeChest.translation)
+    return ld,rd
+
+def random_cube_q(cubeq0, cubeqgoal, step_size, checkcollision=True):
     oMframeChest = robot.data.oMf[1]
     from pinocchio.utils import rotate
-    max_reach_d = 1.3
-    distance_tolerance = 0.2
+    max_reach_d = 1
+    distance_tolerance = 0.3
+    ld, rd = robot_constraints()
     
     x_range, y_range, _ = abs(cubeqgoal.translation-cubeq0.translation)
-    while True:
+    for _ in range(1000):
         # x = np.random.uniform(low=cubeq0.translation[0]-x_range, high=cubeq0.translation[0]+x_range)
         # y = np.random.uniform(low=cubeq0.translation[1]-y_range, high=cubeq0.translation[1]+y_range)
-        Rid = robot.model.getFrameId(RIGHT_HAND)
-        oMframeR = robot.data.oMf[Rid]
-        Lid = robot.model.getFrameId(LEFT_HAND)
-        oMframeL = robot.data.oMf[Lid]
-        oMframeChest = robot.data.oMf[1]
-        rd = np.linalg.norm(oMframeL.translation - oMframeChest.translation)
-        ld = np.linalg.norm(oMframeR.translation - oMframeChest.translation)
-
-        x = np.random.uniform(low=cubeq0.translation[0], high=cubeqgoal.translation[0])
-        y = np.random.uniform(low=cubeq0.translation[1], high=cubeqgoal.translation[1])
-        z = np.random.uniform(low=0.93, high=1.3)
-        q = pin.SE3(rotate('z', 0.),np.array([x,y,z]))
-        d_obs = np.linalg.norm(q.translation-OBSTACLE_PLACEMENT.translation)
         
-
-        if d_obs > distance_tolerance and rd < max_reach_d and ld < max_reach_d:
+        new_pos = np.random.uniform(-1, 1, 3)*step_size
+        # new_pos[:2] = new_pos[:2]
+        direction = cubeq0.translation + new_pos
+        q = pin.SE3(rotate('z', 0.),direction)
+        
+        d_obs = np.linalg.norm(q.translation-OBSTACLE_PLACEMENT.translation)
+        if d_obs > distance_tolerance and direction[2] >= 0.93:
             return q
-    
+    return q
+
 def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
-    #TODO
-    q_rand = random_cube_q(cubeplacementq0, cubeplacementqgoal)
-    return q_rand
+    step_size = 2
+    while True:
+        q_rand = random_cube_q(cubeplacementq0, cubeplacementqgoal, step_size)
+
+        pose, success = computeqgrasppose(robot, q, cube, q_rand, viz)
+        if success:
+            break
     #ensure that cube placements that are generated only occur in positions and orientations i like
     #robot must be holding cube, duh
     #
@@ -71,8 +79,10 @@ if __name__ == "__main__":
     
     
     q = robot.q0.copy()
-    for i in range(1):
-        q0,successinit = computeqgrasppose(robot, q, cube, random_cube_q(CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET), viz)
+    q_rand = random_cube_q(CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, 0.1)
+    for i in range(5):
+        q0,successinit = computeqgrasppose(robot, q, cube, q_rand, viz)
+        q_rand = random_cube_q(q_rand, CUBE_PLACEMENT_TARGET, 0.1)
         
     # qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
     # if not(successinit and successend):
