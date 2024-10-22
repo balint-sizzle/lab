@@ -28,10 +28,12 @@ def robot_constraints():
     ld = np.linalg.norm(oMframeR.translation - oMframeChest.translation)
     return ld,rd
 
-def random_cube_q(cube_q, step_size):
+def random_cube_q(cube_q, step_size, cube_goal, goal_heuristic):
     while True:
         new_pos = np.random.uniform(-1, 1, 3)*step_size
-        direction = cube_q.translation + new_pos
+        towards_goal = cube_goal.translation- cube_q.translation
+        heuristic = (towards_goal/np.linalg.norm(towards_goal))*step_size
+        direction = cube_q.translation + (new_pos * (1-goal_heuristic)) + (heuristic * goal_heuristic)
         oMf = pin.SE3(rotate('z', 0.),direction)
         setcubeplacement(robot, cube, oMf)
         cube_coll = pin.computeCollision(cube.collision_model, cube.collision_data, False)
@@ -56,6 +58,7 @@ def nearest_vertex(G, q):
 
 def new_conf(cubeq_from, cubeq_to, discretisationsteps, q_current, delta_q = None):
     cubeq_end = cubeq_to.copy()
+    q, _ = computeqgrasppose(robot, q_current, cube, cubeq_to, viz)
     dist = distance(cubeq_from, cubeq_to)
 
     # if delta_q is not None and dist > delta_q:
@@ -82,15 +85,16 @@ def getpath(G):
     path = []
     node = G[-1]
     while node[0] is not None:
-        path = [node[2]] + path
+        path = [(node[1], node[2])] + path
         node = G[node[0]]
-    path = [G[0][2]] + path
+    path = [(G[0][1], G[0][2])] + path
     return path
 
 def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
-    step_size = 0.3
+    step_size = 0.2
+    goal_heuristic = 0.5
     discretisationsteps = 5
-    goal_dst_tolerance = 1e-3
+    goal_dst_tolerance = 1e-1
     rrt_k = 100
     cubeq_current = cubeplacementq0
     q_current = qinit
@@ -99,12 +103,13 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
     G = [(None,cubeplacementq0, qinit)]
     for i in range(rrt_k):
         print("node:",i)
+        viz.display(q_current)
         while True:
             # if np.linalg.norm(cubeq_current-cubeplacementqgoal) < goal_dst_tolerance:
             #     cube_curent = cubeplacementqgoal
             #     break
             # else:
-            cubeq_rand = random_cube_q(cubeq_current, step_size)
+            cubeq_rand = random_cube_q(cubeq_current, step_size, cubeplacementqgoal, goal_heuristic)
             q_rand, success = computeqgrasppose(robot, q_current, cube, cubeq_rand, viz)
             if success:
                 cubeq_current = cubeq_rand
@@ -124,10 +129,10 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
     print("path wasn't found")
        
     path = getpath(G)
-    path.append(qgoal)
+    path.append((cubeplacementqgoal, qgoal))
     return path
 
-def displayedge(q0,q1,vel=2.): #vel in sec.    
+def displayedge(q0,q1, viz, vel=2.): #vel in sec.    
     '''Display the path obtained by linear interpolation of q0 to q1 at constant velocity vel'''
     fps = 40
     framerate = 1/fps
@@ -137,12 +142,18 @@ def displayedge(q0,q1,vel=2.): #vel in sec.
         time.sleep(framerate)
     
 def displaypath(robot,path,dt,viz):
-    print(path)
+    # print(path)
     for q0, q1 in zip(path[:-1],path[1:]):
-        displayedge(q0,q1)
+        cq0, rq0 = q0
+        cq1, rq1 = q1
+        setcubeplacement(robot, cube, cq0)
+        displayedge(rq0, rq1, viz)
+        time.sleep(dt)
     # for q in path:
+    #     cq0, rq0 = q
+    #     setcubeplacement(robot, cube, cq0)
     #     print("step")
-    #     viz.display(q)
+    #     displayedge()
     #     time.sleep(dt)
 
 
