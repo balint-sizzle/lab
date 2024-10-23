@@ -16,7 +16,7 @@ Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
 
 def controllaw(sim, robot, trajs, tcurrent, cube):
     q, vq = sim.getpybulletstate()
-    #TODO 
+    
     torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
     sim.step(torques)
 

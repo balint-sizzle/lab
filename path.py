@@ -16,6 +16,9 @@ import time
 from tools import collision, setcubeplacement
 from pinocchio.utils import rotate
 from math import ceil
+from tools import setupwithmeshcat
+from inverse_geometry import computeqgrasppose
+robot, cube, viz = setupwithmeshcat()
 #returns a collision free path from qinit to qgoal under grasping constraints
 #the path is expressed as a list of configurations
 def robot_constraints():
@@ -40,10 +43,10 @@ def random_cube_q(cube_q, step_size, cube_goal, goal_heuristic):
         if direction[2] >= 0.93 and not cube_coll:
             return oMf
 
-def lerp(q0,q1,t):    
+def lerp(q0,q1,t):
     return q0.translation * (1 - t) + q1.translation * t
 
-def lerp_config(q0,q1,t):    
+def lerp_config(q0,q1,t):
     return q0 * (1 - t) + q1 * t
 
 def distance(q1,q2):
@@ -72,6 +75,7 @@ def new_conf(cubeq_from, cubeq_to, discretisationsteps, q_current, delta_q = Non
         q, success = computeqgrasppose(robot, q_current, cube, oMf, viz)  # can I form a valid grasp through the discretised distance?
         # setcubeplacement(robot, cube, oMf)
         if pin.computeCollision(cube.collision_model, cube.collision_data, False) or not success:
+        # if collision(robot, q):
             cubeq_prev = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt*i))
             # setcubeplacement(robot, cube, cubeq_prev)
             q_prev, success = computeqgrasppose(robot, q_current, cube, oMf, viz)
@@ -130,7 +134,7 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
     path.append((cubeplacementqgoal, qgoal))
     return path
 
-def displayedge(q0,q1, viz, vel=2.): #vel in sec.    
+def displayedge(q0,q1, viz, vel=2.): #vel in sec.
     '''Display the path obtained by linear interpolation of q0 to q1 at constant velocity vel'''
     fps = 40
     framerate = 1/fps

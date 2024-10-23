@@ -49,15 +49,14 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         oMframeR = robot.data.oMf[Rid]
         Lid = robot.model.getFrameId(LEFT_HAND)
         oMframeL = robot.data.oMf[Lid]
-        
+
         errorR = pin.log(oMframeR.inverse() * oMcubeR).vector
         errorL = pin.log(oMframeL.inverse() * oMcubeL).vector
         
         combined_err = errorR + errorL
-
+        
         o_JRhand = pin.computeFrameJacobian(robot.model, robot.data, q, Rid)
         o_JLhand = pin.computeFrameJacobian(robot.model, robot.data, q, Lid)
-        
         o_Jcombined = np.vstack([o_JRhand, o_JLhand])
 
         if np.linalg.norm(combined_err) < convergence_tolerance:
