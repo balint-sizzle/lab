@@ -35,7 +35,7 @@ def random_cube_q(cube_q, step_size, cube_goal, goal_heuristic):
         heuristic = (towards_goal/np.linalg.norm(towards_goal))*step_size
         direction = cube_q.translation + (new_pos * (1-goal_heuristic)) + (heuristic * goal_heuristic)
         oMf = pin.SE3(rotate('z', 0.),direction)
-        setcubeplacement(robot, cube, oMf)
+        # setcubeplacement(robot, cube, oMf)
         cube_coll = pin.computeCollision(cube.collision_model, cube.collision_data, False)
         if direction[2] >= 0.93 and not cube_coll:
             return oMf
@@ -70,10 +70,10 @@ def new_conf(cubeq_from, cubeq_to, discretisationsteps, q_current, delta_q = Non
     for i in range(1,discretisationsteps):
         oMf = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt*i))
         q, success = computeqgrasppose(robot, q_current, cube, oMf, viz)  # can I form a valid grasp through the discretised distance?
-        setcubeplacement(robot, cube, oMf)
+        # setcubeplacement(robot, cube, oMf)
         if pin.computeCollision(cube.collision_model, cube.collision_data, False) or not success:
             cubeq_prev = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt*i))
-            setcubeplacement(robot, cube, cubeq_prev)
+            # setcubeplacement(robot, cube, cubeq_prev)
             q_prev, success = computeqgrasppose(robot, q_current, cube, oMf, viz)
             return cubeq_prev, q_prev
     return cubeq_end, q
@@ -103,7 +103,7 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
     G = [(None,cubeplacementq0, qinit)]
     for i in range(rrt_k):
         print("node:",i)
-        viz.display(q_current)
+        # viz.display(q_current)
         while True:
             # if np.linalg.norm(cubeq_current-cubeplacementqgoal) < goal_dst_tolerance:
             #     cube_curent = cubeplacementqgoal
@@ -114,9 +114,7 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
             if success:
                 cubeq_current = cubeq_rand
                 break
-        print("found cube rand")
         cubeq_near_index = nearest_vertex(G, cubeq_rand)
-        print("found nearest")
         cubeq_near = G[cubeq_near_index][1]
         cubeq_new, q_new = new_conf(cubeq_near, cubeq_rand, discretisationsteps, q_rand)
         print("found new config")
@@ -152,8 +150,7 @@ def displaypath(robot,path,dt,viz):
     # for q in path:
     #     cq0, rq0 = q
     #     setcubeplacement(robot, cube, cq0)
-    #     print("step")
-    #     displayedge()
+    #     viz.display(rq0)
     #     time.sleep(dt)
 
 
