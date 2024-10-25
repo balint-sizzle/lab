@@ -21,15 +21,11 @@ from inverse_geometry import computeqgrasppose
 robot, cube, viz = setupwithmeshcat()
 #returns a collision free path from qinit to qgoal under grasping constraints
 #the path is expressed as a list of configurations
-def robot_constraints():
-    Rid = robot.model.getFrameId(RIGHT_HAND)
-    oMframeR = robot.data.oMf[Rid]
-    Lid = robot.model.getFrameId(LEFT_HAND)
-    oMframeL = robot.data.oMf[Lid]
-    oMframeChest = robot.data.oMf[1]
-    rd = np.linalg.norm(oMframeL.translation - oMframeChest.translation)
-    ld = np.linalg.norm(oMframeR.translation - oMframeChest.translation)
-    return ld,rd
+def cube_collision(oMf):
+    q = cube.q0
+    setcubeplacement(robot, cube, oMf)
+    pin.updateGeometryPlacements(cube.model,cube.data,cube.collision_model,cube.collision_data,q)
+    return pin.computeCollision(cube.collision_model, cube.collision_data, False)
 
 def random_cube_q(cube_q, step_size, cube_goal, goal_heuristic):
     while True:
@@ -39,8 +35,7 @@ def random_cube_q(cube_q, step_size, cube_goal, goal_heuristic):
         direction = cube_q.translation + (new_pos * (1-goal_heuristic)) + (heuristic * goal_heuristic)
         oMf = pin.SE3(rotate('z', 0.),direction)
         # setcubeplacement(robot, cube, oMf)
-        cube_coll = pin.computeCollision(cube.collision_model, cube.collision_data, False)
-        if direction[2] >= 0.93 and not cube_coll:
+        if direction[2] >= 0.93 and not cube_collision(oMf):
             return oMf
 
 def lerp(q0,q1,t):
@@ -73,8 +68,8 @@ def new_conf(cubeq_from, cubeq_to, discretisationsteps, q_current, delta_q = Non
     for i in range(1,discretisationsteps):
         oMf = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt*i))
         q, success = computeqgrasppose(robot, q_current, cube, oMf, viz)  # can I form a valid grasp through the discretised distance?
-        # setcubeplacement(robot, cube, oMf)
-        if pin.computeCollision(cube.collision_model, cube.collision_data, False) or not success:
+        
+        if cube_collision(oMf) or not success:
         # if collision(robot, q):
             cubeq_prev = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt*i))
             # setcubeplacement(robot, cube, cubeq_prev)
@@ -127,12 +122,10 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
         G.append([cubeq_near_index, cubeq_new, q_new])
         if valid_edge(cubeq_current, cubeplacementqgoal, discretisationsteps, goal_dst_tolerance, q_current):
             print("path found")
-            break
+            path = getpath(G)
+            path.append((cubeplacementqgoal, qgoal))
+            return path
     print("path wasn't found")
-       
-    path = getpath(G)
-    path.append((cubeplacementqgoal, qgoal))
-    return path
 
 def displayedge(q0,q1, viz, vel=2.): #vel in sec.
     '''Display the path obtained by linear interpolation of q0 to q1 at constant velocity vel'''
@@ -145,17 +138,17 @@ def displayedge(q0,q1, viz, vel=2.): #vel in sec.
     
 def displaypath(robot,path,dt,viz):
     # print(path)
-    for q0, q1 in zip(path[:-1],path[1:]):
-        cq0, rq0 = q0
-        cq1, rq1 = q1
-        setcubeplacement(robot, cube, cq0)
-        displayedge(rq0, rq1, viz)
-        time.sleep(dt)
-    # for q in path:
-    #     cq0, rq0 = q
+    # for q0, q1 in zip(path[:-1],path[1:]):
+    #     cq0, rq0 = q0
+    #     cq1, rq1 = q1
     #     setcubeplacement(robot, cube, cq0)
-    #     viz.display(rq0)
+    #     displayedge(rq0, rq1, viz)
     #     time.sleep(dt)
+    for q in path:
+        cq0, rq0 = q
+        setcubeplacement(robot, cube, cq0)
+        viz.display(rq0)
+        time.sleep(dt)
 
 
 
@@ -165,7 +158,6 @@ if __name__ == "__main__":
     from inverse_geometry import computeqgrasppose
     
     robot, cube, viz = setupwithmeshcat()
-    
     
     q = robot.q0.copy()
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
