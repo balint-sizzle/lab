@@ -73,7 +73,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         q = apply_joint_limits(robot, q)
 
         # viz.display(q)
-        # time.sleep(0.01)
+        # time.sleep(0.03)
     # def cost(q):
     #     #now let's print the placement attached to the right hand
     #     pin.framesForwardKinematics(robot.model,robot.data,q)

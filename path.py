@@ -32,7 +32,7 @@ def random_cube_q(cube_q, step_size, cube_goal, goal_heuristic):
         new_pos = np.random.uniform(-1, 1, 3)*step_size
         towards_goal = cube_goal.translation- cube_q.translation
         heuristic = (towards_goal/np.linalg.norm(towards_goal))*step_size
-        direction = cube_q.translation + (new_pos * (1-goal_heuristic)) + (heuristic * goal_heuristic)
+        direction = cube_q.translation + ((new_pos * (1-goal_heuristic)) + (heuristic * goal_heuristic))
         oMf = pin.SE3(rotate('z', 0.),direction)
         # setcubeplacement(robot, cube, oMf)
         if direction[2] >= 0.93 and not cube_collision(oMf):
@@ -71,11 +71,27 @@ def new_conf(cubeq_from, cubeq_to, discretisationsteps, q_current, delta_q = Non
         
         if cube_collision(oMf) or not success:
         # if collision(robot, q):
-            cubeq_prev = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt*i))
+            cubeq_prev = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt*(i-1)))
             # setcubeplacement(robot, cube, cubeq_prev)
-            q_prev, success = computeqgrasppose(robot, q_current, cube, oMf, viz)
+            q_prev, success = computeqgrasppose(robot, q_current, cube, cubeq_prev, viz)
             return cubeq_prev, q_prev
     return cubeq_end, q
+
+def lerp_all(cubeq_from, cubeq_to, q_current, dt, delta_q = None):
+    cubeq_end = cubeq_to.copy()
+    q, _ = computeqgrasppose(robot, q_current, cube, cubeq_to, viz)
+    dist = distance(cubeq_from, cubeq_to)
+
+    # if delta_q is not None and dist > delta_q:
+    #     #compute the configuration that corresponds to a path of length delta_q
+    #     q_end = lerp(q_near,q_rand,delta_q/dist)
+    #     dist = delta_q
+
+    # dt = dist / discretisationsteps
+    oMf = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,dt))
+    q, success = computeqgrasppose(robot, q_current, cube, oMf, viz)  # can I form a valid grasp through the discretised distance?
+    
+    return q
 
 def valid_edge(q_new,q_goal,discretisationsteps, goal_dst_tolerance, q_current):
     return np.linalg.norm(q_goal.translation -new_conf(q_new, q_goal,discretisationsteps, q_current)[0].translation) < goal_dst_tolerance
@@ -92,8 +108,8 @@ def getpath(G):
 def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
     step_size = 0.2
     goal_heuristic = 0.5
-    discretisationsteps = 5
-    goal_dst_tolerance = 1e-1
+    discretisationsteps = 30
+    goal_dst_tolerance = 1e-2
     rrt_k = 100
     cubeq_current = cubeplacementq0
     q_current = qinit
@@ -127,28 +143,33 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
             return path
     print("path wasn't found")
 
-def displayedge(q0,q1, viz, vel=2.): #vel in sec.
+def displayedge(cq0,cq1, rq0, viz, vel=2.): #vel in sec.
     '''Display the path obtained by linear interpolation of q0 to q1 at constant velocity vel'''
-    fps = 40
+    fps = 60
+    dist = distance(cq0, cq1)
+    duration = dist/vel
     framerate = 1/fps
-    t = ceil(distance_config(q0, q1)/vel)
-    for f in range(fps):
-        viz.display(lerp_config(q0, q1, t*f))
+    nframes = ceil(fps * duration)
+    for i in range(nframes):
+        viz.display(lerp_all(cq0, cq1, rq0, float(i)/nframes))
         time.sleep(framerate)
     
 def displaypath(robot,path,dt,viz):
-    # print(path)
-    # for q0, q1 in zip(path[:-1],path[1:]):
-    #     cq0, rq0 = q0
-    #     cq1, rq1 = q1
-    #     setcubeplacement(robot, cube, cq0)
-    #     displayedge(rq0, rq1, viz)
-    #     time.sleep(dt)
-    for q in path:
-        cq0, rq0 = q
-        setcubeplacement(robot, cube, cq0)
-        viz.display(rq0)
+    print(path)
+    for i in range(1, len(path)):
+        q0 = path[i-1]
+        q1 = path[i]
+        cq0, rq0 = q0
+        cq1, rq1 = q1
+        #setcubeplacement(robot, cube, cq0)
+        displayedge(cq0, cq1, rq0, viz, vel=dt)
         time.sleep(dt)
+    
+    # for q in path:
+    #     cq0, rq0 = q
+    #     setcubeplacement(robot, cube, cq0)
+    #     viz.display(rq0)
+    #     time.sleep(dt)
 
 
 
@@ -168,5 +189,5 @@ if __name__ == "__main__":
     
     path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
     input("display?")
-    displaypath(robot,path,dt=.5,viz=viz) #you ll probably want to lower dt
+    displaypath(robot,path,dt=.2,viz=viz) #you ll probably want to lower dt
     
