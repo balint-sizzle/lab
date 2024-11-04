@@ -25,12 +25,12 @@ def projecttojointlimits(robot,q):
 def collision(robot, q):
      '''Return true if in collision, false otherwise.'''
      pin.updateGeometryPlacements(robot.model,robot.data,robot.collision_model,robot.collision_data,q)
-     # if pin.computeCollisions(robot.collision_model,robot.collision_data,False):
-     #     for k in range(len(robot.collision_model.collisionPairs)): 
-     #         cr = robot.collision_data.collisionResults[k]
-     #         cp = robot.collision_model.collisionPairs[k]
-     #         if cr.isCollision():
-     #             print("collision pair:",robot.collision_model.geometryObjects[cp.first].name,",",robot.collision_model.geometryObjects[cp.second].name,"- collision:","Yes" if cr.isCollision() else "No")
+    #  if pin.computeCollisions(robot.collision_model,robot.collision_data,False):
+    #      for k in range(len(robot.collision_model.collisionPairs)): 
+    #          cr = robot.collision_data.collisionResults[k]
+    #          cp = robot.collision_model.collisionPairs[k]
+    #          if cr.isCollision():
+    #              print("collision pair:",robot.collision_model.geometryObjects[cp.first].name,",",robot.collision_model.geometryObjects[cp.second].name,"- collision:","Yes" if cr.isCollision() else "No")
      
      return pin.computeCollisions(robot.collision_model,robot.collision_data,False)
     
@@ -43,11 +43,11 @@ def distanceToObstacle(robot, q):
       pin.updateGeometryPlacements(robot.model,robot.data,robot.collision_model,robot.collision_data,q)
       dists = [pin.computeDistance(robot.collision_model, robot.collision_data, idx).min_distance for idx in pairs]      
       
-      # pairsId = [pair.first for i, pair in enumerate(robot.collision_model.collisionPairs) if pair.second == geomidobs or pair.second == geomidtable]
-      # names = [robot.collision_model.geometryObjects[idx].name for idx in pairsId ]
-      # for name, dist in zip(names,dists):
-      #     print ("name / distance ", name, " / ", dist)
-      # print(min (dists))
+    #   pairsId = [pair.first for i, pair in enumerate(robot.collision_model.collisionPairs) if pair.second == geomidobs or pair.second == geomidtable]
+    #   names = [robot.collision_model.geometryObjects[idx].name for idx in pairsId ]
+    #   for name, dist in zip(names,dists):
+    #       print ("name / distance ", name, " / ", dist)
+    #   print(min (dists))
       return min(dists)
 
     

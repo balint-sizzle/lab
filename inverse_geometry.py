@@ -24,10 +24,26 @@ def apply_joint_limits(robot, q):
     q_clamped = np.clip(q, robot.model.lowerPositionLimit, robot.model.upperPositionLimit)
     return q_clamped
 
+def distanceToCubeOrTable(robot, q):
+      '''Return the shortest distance between robot and the obstacle. '''
+      geomidcube = robot.collision_model.getGeometryId('cubebase_0')
+      geomidtable = robot.collision_model.getGeometryId('baseLink_0')
+      pairs = [i for i, pair in enumerate(robot.collision_model.collisionPairs) if pair.second == geomidcube or pair.second == geomidtable]
+      pin.framesForwardKinematics(robot.model,robot.data,q)
+      pin.updateGeometryPlacements(robot.model,robot.data,robot.collision_model,robot.collision_data,q)
+      dists = [pin.computeDistance(robot.collision_model, robot.collision_data, idx).min_distance for idx in pairs]      
+      
+      # pairsId = [pair.first for i, pair in enumerate(robot.collision_model.collisionPairs) if pair.second == geomidobs or pair.second == geomidtable]
+      # names = [robot.collision_model.geometryObjects[idx].name for idx in pairsId ]
+      # for name, dist in zip(names,dists):
+      #     print ("name / distance ", name, " / ", dist)
+      # print(min (dists))
+      return min(dists)
+
 def calculate_collision_cost(robot, q):
-    tol = 0.001
+    tol = 0.003
     scaling = 10
-    dto = distanceToObstacle(robot, q)
+    dto = distanceToCubeOrTable(robot, q)
     if dto < tol:
         return scaling*dto
     else:
@@ -37,11 +53,13 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
     setcubeplacement(robot, cube, cubetarget)
     DT = 1e-1
-    convergence_tolerance = 0.0005
+    convergence_tolerance = 0.01
     q = qcurrent
     for i in range(100):
+
         pin.framesForwardKinematics(robot.model,robot.data,q)
         pin.computeJointJacobians(robot.model,robot.data,q)
+
         
         oMcubeL = getcubeplacement(cube, LEFT_HOOK)
         oMcubeR = getcubeplacement(cube, RIGHT_HOOK)
@@ -50,20 +68,24 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         Lid = robot.model.getFrameId(LEFT_HAND)
         oMframeL = robot.data.oMf[Lid]
 
-        errorR = pin.log(oMframeR.inverse() * oMcubeR).vector
-        errorL = pin.log(oMframeL.inverse() * oMcubeL).vector
+        v1 = pin.log(oMframeR.inverse() * oMcubeR).vector
+        v2 = pin.log(oMframeL.inverse() * oMcubeL).vector
         
-        combined_err = errorR + errorL
+        combined_err = v1 + v2
         
+
         o_JRhand = pin.computeFrameJacobian(robot.model, robot.data, q, Rid)
         o_JLhand = pin.computeFrameJacobian(robot.model, robot.data, q, Lid)
-        o_Jcombined = np.vstack([o_JRhand, o_JLhand])
+        
+        # o_Jcombined = np.vstack([o_JRhand, o_JLhand])
 
-        if np.linalg.norm(combined_err) < convergence_tolerance:
-            return q, not collision(robot, q)
+        if np.linalg.norm(combined_err) < convergence_tolerance and not collision(robot, q):
+            return q, True
 
         collision_cost = calculate_collision_cost(robot, q)
-        vq = pinv(o_Jcombined) @ np.hstack([errorR, errorL])
+        vq1 = pinv(o_JRhand) @ v1
+        P1 = np.eye(robot.nv)-pinv(o_JRhand) @ o_JRhand
+        vq = vq1 + pinv(o_JLhand @ P1) @ (v2 - o_JLhand @ vq1)
 
         if collision_cost > 0:
             repulsive_velocity = -collision_cost * np.sign(vq)
@@ -95,7 +117,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     # qdes = fmin_bfgs(cost, qcurrent, epsilon=EPSILON, disp=False) #callback=callback, 
 
     # success = cost(qdes) < 0.01
-    return q, not collision(robot, q)
+    return q, False
             
 if __name__ == "__main__":
     from tools import setupwithmeshcat
@@ -106,7 +128,7 @@ if __name__ == "__main__":
     
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
     qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
-    
+    # print(successinit, successend)
     updatevisuals(viz, robot, cube, qe)
     
     
