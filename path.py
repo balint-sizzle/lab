@@ -78,7 +78,7 @@ def new_conf(cubeq_from, cubeq_to, discretisationsteps, q_current, delta_q = Non
     for i in range(1,discretisationsteps):
         oMf = pin.SE3(rotate('z', 0.), lerp(cubeq_from,cubeq_to,(dt*i)/dist))
         q_h, success = computeqgrasppose(robot, q_current, cube, oMf, viz)
-        viz.display(q_h)
+        # viz.display(q_h)
         # print(f"{i+1}: obs: {round(distanceToObstacle(robot, q_h), 3)}  to goal: {round(np.linalg.norm(cubeq_to.translation - oMf.translation), 3)}    current: {round(dt*i,3)}/{round(dist,3)}")
         # input()
         if cube_collision(oMf) or distanceToObstacle(robot, q_h) < 0.001:
@@ -125,7 +125,6 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
         cubeq_current = cubeq_new
         q_current = q_new
         G.append([cubeq_near_index, cubeq_new, q_new])
-        print("valid edge")
         if valid_edge(cubeq_current, cubeplacementqgoal, discretisationsteps, goal_dst_tolerance, q_current):
             print("path found")
             path = getpath(G)
@@ -133,7 +132,7 @@ def computepath(qinit,qgoal,cubeplacementq0, cubeplacementqgoal):# -> List[q]:
             return path
     print("path wasn't found")
 
-def displayedge(cq0,cq1, rq0, viz, vel=2.): 
+def displayedge(robot, cq0,cq1, rq0, viz, vel=2.): 
     '''Display the path obtained by linear interpolation of q0 to q1 at constant velocity vel'''
     fps = 60
     dist = distance(cq0, cq1)
@@ -147,14 +146,42 @@ def displayedge(cq0,cq1, rq0, viz, vel=2.):
         time.sleep(framerate)
     
 def displaypath(robot,path,dt,viz):
-    print(path)
     for i in range(1, len(path)):
         q0 = path[i-1]
         q1 = path[i]
         cq0, rq0 = q0
         cq1, rq1 = q1
-        displayedge(cq0, cq1, rq0, viz, vel=dt)
+        displayedge(robot, cq0, cq1, rq0, viz, vel=dt)
         time.sleep(dt)
+
+def display_bezier(robot, path, dt, viz):
+    from bezier import Bezier
+    t_max = 5
+    t = 0
+    r = []
+    c = []
+    for q in path:
+        r.append(q[1])
+        r.append(q[1])
+        r.append(q[1])
+
+        c.append(q[0])
+        c.append(q[0])
+        c.append(q[0])
+
+    robot_path = np.array(r)
+    cube_path = np.array(c)
+    robot_curve = Bezier(robot_path, t_max=t_max)
+    cube_curve = Bezier(cube_path, t_max=t_max)
+    while t < t_max:
+        q_robot = robot_curve.eval_horner(t)
+        q_cube = pin.SE3(cube_curve.eval_horner(t))
+
+        setcubeplacement(robot, cube, q_cube)
+        viz.display(q_robot)
+        t += dt
+        time.sleep(dt)
+
 
 if __name__ == "__main__":
     from tools import setupwithmeshcat
@@ -171,4 +198,5 @@ if __name__ == "__main__":
         print ("error: invalid initial or end configuration")
     path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
     input("display?")
-    displaypath(robot,path,dt=.2,viz=viz) #you ll probably want to lower dt
+    # displaypath(robot,path,dt=.2,viz=viz) #you ll probably want to lower dt
+    display_bezier(robot, path, dt=.01, viz=viz)
