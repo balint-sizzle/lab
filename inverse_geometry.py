@@ -41,8 +41,8 @@ def distanceToCubeOrTable(robot, q):
       return min(dists)
 
 def calculate_collision_cost(robot, q):
-    tol = 0.003
-    scaling = 10
+    tol = 0.0001
+    scaling = 1
     dto = distanceToCubeOrTable(robot, q)
     if dto < tol:
         return scaling*dto
@@ -53,9 +53,9 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
     setcubeplacement(robot, cube, cubetarget)
     DT = 1e-1
-    convergence_tolerance = 0.01
+    convergence_tolerance = 0.004
     q = qcurrent
-    for i in range(100):
+    for i in range(200):
 
         pin.framesForwardKinematics(robot.model,robot.data,q)
         pin.computeJointJacobians(robot.model,robot.data,q)
@@ -70,7 +70,8 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
 
         v1 = pin.log(oMframeR.inverse() * oMcubeR).vector
         v2 = pin.log(oMframeL.inverse() * oMcubeL).vector
-        
+        # v1[0] = v1[0]+0.03
+        # v2[0] = v2[0]-0.03
         combined_err = v1 + v2
         
 
@@ -78,8 +79,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         o_JLhand = pin.computeFrameJacobian(robot.model, robot.data, q, Lid)
         
         # o_Jcombined = np.vstack([o_JRhand, o_JLhand])
-
-        if np.linalg.norm(combined_err) < convergence_tolerance and not collision(robot, q):
+        if np.linalg.norm(v1) < convergence_tolerance and np.linalg.norm(v2) < convergence_tolerance:
             return q, True
 
         collision_cost = calculate_collision_cost(robot, q)
@@ -87,9 +87,9 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         P1 = np.eye(robot.nv)-pinv(o_JRhand) @ o_JRhand
         vq = vq1 + pinv(o_JLhand @ P1) @ (v2 - o_JLhand @ vq1)
 
-        if collision_cost > 0:
-            repulsive_velocity = -collision_cost * np.sign(vq)
-            vq += repulsive_velocity
+        # if collision_cost > 0:
+        #     repulsive_velocity = collision_cost * np.sign(vq)
+        #     vq += repulsive_velocity
 
         q = pin.integrate(robot.model,q, vq * DT)
         q = apply_joint_limits(robot, q)

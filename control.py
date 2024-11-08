@@ -11,28 +11,68 @@ import numpy as np
 from bezier import Bezier
     
 import pinocchio as pin
+from numpy.linalg import pinv,inv,norm,svd,eig
+from tools import getcubeplacement
+from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON 
 
+import matplotlib.pyplot as plt
 # in my solution these gains were good enough for all joints but you might want to tune this.
-Kp = 1e5               # proportional gain (P of PD)
-Kv = 50   # derivative gain (D of PD)
+Kp = 1e4+1               # proportional gain (P of PD)
+Kv = 2*np.sqrt(Kp)   # derivative gain (D of PD)
+# Kc = 500
+
+#TODO
+#plot decaying error
+#
+#
+error_e = []
+error_ed = []
+u_s = []
+times = []
 
 def controllaw(sim, robot, trajs, tcurrent, cube):
     q, vq = sim.getpybulletstate()
+    pin.computeAllTerms(robot.model, robot.data, q, vq)
+    # Rid = robot.model.getFrameId(RIGHT_HAND)
+    # Lid = robot.model.getFrameId(LEFT_HAND)
+    # pin.computeJointJacobians(robot.model,robot.data,q)
+    # pin.framesForwardKinematics(robot.model,robot.data,q)
+    # current = robot.data.oMi[8]
+    # pin.framesForwardKinematics(robot.model,robot.data,trajs[0](tcurrent))
+    # ref = robot.data.oMi[8]
 
     e = trajs[0](tcurrent)-q
     e_d = trajs[1](tcurrent)-vq
-    pin.computeAllTerms(robot.model, robot.data, q, vq)
-    # pin.computeMinverse(robot.model, robot.data, q)
-    # pin.computeGeneralizedGravity(robot.model, robot.data, q)
-    #pin.computeCentroidalMomentum(robot.model, robot.data, np.array([q, vq]))
-    M = robot.data.M
-    # tau = M *
-    qt_star = trajs[2](tcurrent) + Kp*e + Kv * e_d
-    torques = pin.rnea(robot.model, robot.data, e, e_d, qt_star)
-    # print(torques)
-    # u_star = M @ qt_star + G
+    u_star = trajs[2](tcurrent) + Kp*e + Kv * e_d#  + combined_err * Kc
+    
+    error_e.append(e)
+    error_ed.append(e_d)
+    u_s.append(u_star)
+
+    C = pin.getCoriolisMatrix(robot.model, robot.data)
+    M_crba = pin.crba(robot.model, robot.data, q)
+    # M = robot.data.M
+    f_nle = robot.data.nle
+
+    f = (M_crba @ u_star)[8]
+
+    des_force = 5
+    grip_force = 3
+    grippers = [7, 13]
+    M = M_crba @ u_star
+    M[8] = -grip_force
+    M[14] = grip_force
+    u = M + C @ e_d + f_nle
+    
+    #u = pin.rnea(robot.model, robot.data, e, e_d, u_star)# + (J_f @ f)
+
+    print(f"torque: {round(u[8], 3)}  f: {round(f, 3)}  vq: {round(vq[8],3)}")
+    
+    # torques[grippers[0]] = -grip_force
+    # torques[grippers[1]] = grip_force 
+
     # torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
-    sim.step(torques)
+    sim.step(u)
 
 if __name__ == "__main__":
         
@@ -44,12 +84,17 @@ if __name__ == "__main__":
     
     from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
     from inverse_geometry import computeqgrasppose
+    from pinocchio.utils import rotate
     from path import computepath
     
     q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
     qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
     # path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
 
+    new_start = pin.SE3(rotate('z', 0.),np.array([0.33, -0.3, 1.13]))
+    new_target = pin.SE3(rotate('z', 0.), np.array([0.33, 0.11, 1.13]))
+    start, _ = computeqgrasppose(robot, robot.q0, cube, new_start, None)
+    end, _ = computeqgrasppose(robot, robot.q0, cube, new_target, None)
     
     #setting initial configuration
     sim.setqsim(q0)
@@ -61,9 +106,13 @@ if __name__ == "__main__":
     def maketraj(path ,T): #TODO compute a real trajectory !
         r = []
         for q in path:
+        #     # r.append(q[1])
+        #     # r.append(q[1])
+        #     # r.append(q[1])
             r.append(q)
             r.append(q)
             r.append(q)
+        # r.append(start)
         q_of_t = Bezier(r,t_max=T)
         vq_of_t = q_of_t.derivative(1)
         vvq_of_t = vq_of_t.derivative(1)
@@ -118,15 +167,39 @@ if __name__ == "__main__":
         0.14708352, -0.37753085, -0.00343758,  0.2270218 ,  0.90584644]), np.array([ 0.1693032 ,  0.00230325,  0.00272233, -0.14798906, -0.02920587,
        -0.20259757, -0.00342804,  0.23524053, -1.58862521,  0.48690972,
         0.14708352, -0.37753085, -0.00343758,  0.2270218 ,  0.90584644])])
+    
+    # path_r = []
+    # for i in range(10):
+    #     path_r.append(start)
+    #     path_r.append(end)
+    # print(path_r)
     total_time=5.
     trajs = maketraj(path, total_time)
     # print("trajectory:", trajs[0](1))
     tcur = 0.
-    
-    
-    while tcur < total_time:
+    switch = False
+    # print(dir(robot.data))
+    while tcur >= 0:
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
+        # if tcur>4.9:
+        #     switch = True
+        # if switch:
+        #     tcur -= DT
+        #     times.append(4.9+(4.9-tcur))
+        # else:
+        #     times.append(tcur)
         tcur += DT
-    
-    
-    
+
+print(error_ed)
+
+fig = plt.figure()
+plt.plot(times, [ed[8] for ed in error_e])
+plt.plot(times, [ed[14] for ed in error_e])
+
+plt.title(f"Kp: {round(Kp, 3)}  Kd: {round(Kv, 3)} ")
+plt.xlabel("Time")
+plt.ylabel("Pos error")
+fig.savefig(f'./plots/Kp:{round(Kp, 3)}Kd:{round(Kv, 3)}.png', dpi=fig.dpi)
+# plt.plot(times, )
+# plt.plot(times, error_ed)
+# plt.show()
