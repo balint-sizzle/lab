@@ -14,121 +14,74 @@ from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
 from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
 from tools import setcubeplacement
-
-#CUSTOM IMPORTS
-import time
-from scipy.optimize import fmin_bfgs
-from tools import jointlimitscost, jointlimitsviolated, distanceToObstacle
-
-def apply_joint_limits(robot, q):
-    q_clamped = np.clip(q, robot.model.lowerPositionLimit, robot.model.upperPositionLimit)
-    return q_clamped
-
-def distanceToCubeOrTable(robot, q):
-      '''Return the shortest distance between robot and the obstacle. '''
-      geomidcube = robot.collision_model.getGeometryId('cubebase_0')
-      geomidtable = robot.collision_model.getGeometryId('baseLink_0')
-      pairs = [i for i, pair in enumerate(robot.collision_model.collisionPairs) if pair.second == geomidcube or pair.second == geomidtable]
-      pin.framesForwardKinematics(robot.model,robot.data,q)
-      pin.updateGeometryPlacements(robot.model,robot.data,robot.collision_model,robot.collision_data,q)
-      dists = [pin.computeDistance(robot.collision_model, robot.collision_data, idx).min_distance for idx in pairs]      
-      
-      # pairsId = [pair.first for i, pair in enumerate(robot.collision_model.collisionPairs) if pair.second == geomidobs or pair.second == geomidtable]
-      # names = [robot.collision_model.geometryObjects[idx].name for idx in pairsId ]
-      # for name, dist in zip(names,dists):
-      #     print ("name / distance ", name, " / ", dist)
-      # print(min (dists))
-      return min(dists)
-
-def calculate_collision_cost(robot, q):
-    tol = 0.0001
-    scaling = 1
-    dto = distanceToCubeOrTable(robot, q)
-    if dto < tol:
-        return scaling*dto
-    else:
-        return 0
+from tools import distanceToObstacle
 
 def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
-    '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
+    """
+    Returns a tuple of a robot configuration and a boolean on whether a valid pose was found.
+    If a valid pose is found, the configuration will hold the cube.
+    If a valid pose is not found, then the last calculated position
+    in the direction of the cube will be returned.
+
+    Args:
+        robot: Pinocchio object of the robot
+        qcurrent: Initial list of joint configuration
+        cube: Pinocchio object of the cube
+        cubetarget: Cube configuration to perform grasp around
+
+    Returns:
+        q: Robot configuration
+        success: Result of grasping
+    """
     setcubeplacement(robot, cube, cubetarget)
     DT = 1e-1
     convergence_tolerance = 0.004
     q = qcurrent
-    for i in range(200):
-
+    for _ in range(200):
         pin.framesForwardKinematics(robot.model,robot.data,q)
         pin.computeJointJacobians(robot.model,robot.data,q)
-
         
         oMcubeL = getcubeplacement(cube, LEFT_HOOK)
         oMcubeR = getcubeplacement(cube, RIGHT_HOOK)
-        Rid = robot.model.getFrameId(RIGHT_HAND)
-        oMframeR = robot.data.oMf[Rid]
-        Lid = robot.model.getFrameId(LEFT_HAND)
-        oMframeL = robot.data.oMf[Lid]
+        right_hand_id = robot.model.getFrameId(RIGHT_HAND)
+        oMframeR = robot.data.oMf[right_hand_id]
+        left_hand_id = robot.model.getFrameId(LEFT_HAND)
+        oMframeL = robot.data.oMf[left_hand_id]
 
         v1 = pin.log(oMframeR.inverse() * oMcubeR).vector
         v2 = pin.log(oMframeL.inverse() * oMcubeL).vector
-        # v1[0] = v1[0]+0.03
-        # v2[0] = v2[0]-0.03
-        combined_err = v1 + v2
-        
 
-        o_JRhand = pin.computeFrameJacobian(robot.model, robot.data, q, Rid)
-        o_JLhand = pin.computeFrameJacobian(robot.model, robot.data, q, Lid)
+        o_JRhand = pin.computeFrameJacobian(robot.model, robot.data, q, right_hand_id)
+        o_JLhand = pin.computeFrameJacobian(robot.model, robot.data, q, left_hand_id)
+        converged = np.linalg.norm(v1) < convergence_tolerance and np.linalg.norm(v2) < convergence_tolerance
         
-        # o_Jcombined = np.vstack([o_JRhand, o_JLhand])
-        if np.linalg.norm(v1) < convergence_tolerance and np.linalg.norm(v2) < convergence_tolerance:
+        # Early exit condition
+        if converged and distanceToObstacle(robot, q) > 0:
             return q, True
 
-        collision_cost = calculate_collision_cost(robot, q)
+        # Performing two tasks at the same time using the null space
+        # projector of task 1
         vq1 = pinv(o_JRhand) @ v1
         P1 = np.eye(robot.nv)-pinv(o_JRhand) @ o_JRhand
         vq = vq1 + pinv(o_JLhand @ P1) @ (v2 - o_JLhand @ vq1)
 
-        # if collision_cost > 0:
-        #     repulsive_velocity = collision_cost * np.sign(vq)
-        #     vq += repulsive_velocity
-
+        # Making sure velocities are kept within the limits specified
+        # by the manufacturer in the URDF file
+        vq = np.clip(vq, -1, 1)
         q = pin.integrate(robot.model,q, vq * DT)
-        q = apply_joint_limits(robot, q)
+        q = projecttojointlimits(robot, q)
 
-        # viz.display(q)
-        # time.sleep(0.03)
-    # def cost(q):
-    #     #now let's print the placement attached to the right hand
-    #     pin.framesForwardKinematics(robot.model,robot.data,q)
-
-
-    #     collision_cost = 0.01 if collision(robot, q) else 0
-    #     jointlimit_violated = 0.01 if jointlimitsviolated(robot, q) else 0
-    #     jointlimit_cost = jointlimitscost(robot, q)
-    #     left_grasp = norm(pin.log(oMframeL.inverse() * oMcubeL).vector)
-    #     right_grasp = norm(pin.log(oMframeR.inverse() * oMcubeR).vector)
-
-    #     return (left_grasp+right_grasp)**2+collision_cost+jointlimit_violated 
-    
-    # def callback(q):
-    #     from setup_meshcat import updatevisuals
-    #     updatevisuals(viz, robot, cube, q)
-    #     time.sleep(0.02)
-
-    # qdes = fmin_bfgs(cost, qcurrent, epsilon=EPSILON, disp=False) #callback=callback, 
-
-    # success = cost(qdes) < 0.01
+    # If IK didn't converge then it cannot be a valid grasp
     return q, False
             
 if __name__ == "__main__":
     from tools import setupwithmeshcat
     from setup_meshcat import updatevisuals
+    from pinocchio.utils import rotate
     robot, cube, viz = setupwithmeshcat()
     
     q = robot.q0.copy()
     
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
     qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
-    # print(successinit, successend)
     updatevisuals(viz, robot, cube, qe)
-    
-    
